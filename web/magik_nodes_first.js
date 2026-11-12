@@ -6,10 +6,12 @@ import {openOrderEditor} from './order_editor.mjs';
 
 const ORDER_SETTING = 'Magik.NodesFirst.Order';
 const SETTING = 'Magik.NodesFirst.Enabled';
-// Explicit build gate: these are the production modules reviewed and tested.
+// Build gate by module *name*, not by content hash: ComfyUI's bundler renames
+// e.g. settingStore-DZ2-HL-F.js on every frontend release, which broke the
+// previous exact-filename gate. A stable name + hashed suffix now matches.
 const REVIEWED = {
-  service: 'settingStore-DZ2-HL-F.js',
-  vue: 'vendor-vue-core-y4MynkKA.js'
+  service: 'settingStore',
+  vue: 'vendor-vue-core'
 };
 let control, startup;
 const diagnostics = {
@@ -23,12 +25,13 @@ function unavailable(missing) {
   const error = Error(`Waiting for: ${missing.join(', ')}`);
   error.retryable = true; error.missing = missing; return error;
 }
-function loadedModule(file) {
+function loadedModule(name) {
+  const pattern = new RegExp(`/${name}-[A-Za-z0-9_-]+\\.js$`);
   const urls = [
     ...performance.getEntriesByType('resource').map(e => e.name),
     ...[...document.querySelectorAll('script[src],link[href]')].map(e => e.src || e.href)
   ];
-  return urls.map(url => new URL(url, document.baseURI)).find(url => url.origin === location.origin && url.pathname.endsWith('/' + file))?.href;
+  return urls.map(url => new URL(url, document.baseURI)).find(url => url.origin === location.origin && pattern.test(url.pathname))?.href;
 }
 function namedExport(module, name) {
   const fn = Object.values(module).find(value => typeof value === 'function' && value.name === name);
@@ -63,7 +66,7 @@ async function install(isCancelled = () => false) {
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
   const restores = [];
-  const state = {version: '0.2.0', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
+  const state = {version: '0.2.1', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
     get active() { return state.active; },
