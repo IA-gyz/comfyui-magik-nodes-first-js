@@ -1,4 +1,4 @@
-# Magik Nodes First — 0.2.0
+# Magik Nodes First — 0.2.1
 
 A frontend-only ComfyUI extension that puts Magik nodes first and lets you choose their order. No frontend rebuild or Python dependencies are required.
 
