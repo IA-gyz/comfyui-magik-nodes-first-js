@@ -47,7 +47,7 @@ test('actual extension entry returns from setup before Vue mounts, retries, crea
   assert.deepEqual(search.searchNode().map(n=>n.name),['Other','MagikOne','MagikTwo']);
   element={__vue_app__:{config:{globalProperties:{$pinia:pinia}},mixin(){},_instance:null},_vnode:null};
   await until(()=>globalThis.magikNodesFirst.active);
-  assert.equal(globalThis.magikNodesFirst.status().version,'0.2.0');
+  assert.equal(globalThis.magikNodesFirst.status().version,'0.2.2');
   assert.equal(globalThis.magikNodesFirst.status().hooks.emptySearch,true);
   assert.deepEqual(search.searchNode('',[],{limit:64}).map(n=>n.name),['MagikTwo','MagikOne','Other']);
   assert.deepEqual(pinia._s.get('nodeFrequency').topNodeDefs.map(n=>n.name),['MagikTwo','MagikOne','Other']);

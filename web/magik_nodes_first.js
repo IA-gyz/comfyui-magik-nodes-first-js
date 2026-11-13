@@ -1,5 +1,5 @@
 import { app } from '../../scripts/app.js';
-import { isMagik, orderMenu, wrapMethod, wrapSearch, replaceComputed, deferInstallation, getOrCreateStore } from './priority.mjs';
+import { isMagik, orderMenu, wrapMethod, wrapSearch, replaceComputed, deferInstallation, getOrCreateStore, isOrganizationService, findExport } from './priority.mjs';
 
 import {normalizeOrder, nodeRank, rankItems, rankNodes, rankTree, menuRank} from './order.mjs';
 import {openOrderEditor} from './order_editor.mjs';
@@ -25,13 +25,15 @@ function unavailable(missing) {
   const error = Error(`Waiting for: ${missing.join(', ')}`);
   error.retryable = true; error.missing = missing; return error;
 }
-function loadedModule(name) {
-  const pattern = new RegExp(`/${name}-[A-Za-z0-9_-]+\\.js$`);
-  const urls = [
+function loadedUrls() {
+  return [...new Set([
     ...performance.getEntriesByType('resource').map(e => e.name),
     ...[...document.querySelectorAll('script[src],link[href]')].map(e => e.src || e.href)
-  ];
-  return urls.map(url => new URL(url, document.baseURI)).find(url => url.origin === location.origin && pattern.test(url.pathname))?.href;
+  ])].map(url => new URL(url, document.baseURI)).filter(url => url.origin === location.origin);
+}
+function loadedModule(name) {
+  const pattern = new RegExp(`/${name}-[A-Za-z0-9_-]+\\.js$`);
+  return loadedUrls().find(url => pattern.test(url.pathname))?.href;
 }
 function namedExport(module, name) {
   const fn = Object.values(module).find(value => typeof value === 'function' && value.name === name);
@@ -52,7 +54,13 @@ async function install(isCancelled = () => false) {
   // with the application's existing Pinia, rather than waiting for a search to open.
   const defs = getOrCreateStore(pinia, bundle, 'nodeDef');
   const frequency = getOrCreateStore(pinia, bundle, 'nodeFrequency');
-  const organization = Object.values(bundle).find(value => value && typeof value.organizeNodes === 'function' && typeof value.organizeNodesTab === 'function');
+  // The organization service can live in its own chunk depending on the build:
+  // scan every loaded frontend asset module for it (imports are cached).
+  let organization = Object.values(bundle).find(isOrganizationService);
+  if (!organization) {
+    const assets = loadedUrls().filter(url => url.pathname.includes('/assets/') && url.pathname.endsWith('.js')).map(url => url.href);
+    organization = await findExport(assets, url => import(url), isOrganizationService);
+  }
   const graph = globalThis.LiteGraph;
   const missing = [
     !element && 'Vue root element', !vueApp && 'mounted Vue app',
@@ -66,7 +74,7 @@ async function install(isCancelled = () => false) {
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
   const restores = [];
-  const state = {version: '0.2.1', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
+  const state = {version: '0.2.2', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
     get active() { return state.active; },
