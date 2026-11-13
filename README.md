@@ -1,4 +1,4 @@
-# Magik Nodes First — 0.2.1
+# Magik Nodes First — 0.2.2
 
 A frontend-only ComfyUI extension that puts Magik nodes first and lets you choose their order. No frontend rebuild or Python dependencies are required.
 
@@ -36,7 +36,7 @@ The existing **Prioritize Magik nodes** toggle in Settings still controls the fe
 
 Menus, searches and wire suggestions were confirmed working by the user in 0.1.1. Sidebar-specific support is excluded by request. Version 0.2.0 removes the sidebar lifecycle hooks and DOM observers; the shared category-organization hook remains for search category navigation and may also affect native views that use the same service.
 
-This extension uses internal runtime hooks for the supplied production frontend 1.55.18 build. It currently recognizes `settingStore-DZ2-HL-F.js` and `vendor-vue-core-y4MynkKA.js`. A different frontend build may need a bridge update. It does not replace or freeze your installed frontend. Third-party node pickers that bypass native services may need separate integration.
+This extension uses internal runtime hooks for the supplied production frontend 1.55.18 build. It currently recognizes `settingStore-*.js` and `vendor-vue-core-*.js` asset chunks by name pattern. The node organization service is located by scanning all loaded `/assets/*.js` chunks, so builds that reshuffle chunks are handled. A different frontend build may still need a bridge update. It does not replace or freeze your installed frontend. Third-party node pickers that bypass native services may need separate integration.
 
 Startup is deferred until after ComfyUI's setup hook returns. Lazy stores are created through their native accessors in the existing application Pinia. Missing prerequisites are retried for roughly 20 seconds; failures include their names.
 

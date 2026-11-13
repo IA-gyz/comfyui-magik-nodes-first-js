@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {isMagik,partition,orderTree,orderMenu,wrapMethod,wrapSearch} from '../web/priority.mjs';
+import {isMagik,partition,orderTree,orderMenu,wrapMethod,wrapSearch,isOrganizationService,findExport} from '../web/priority.mjs';
 const a={name:'A'},m={name:'MagikOne'},n={name:'MagikTwo'};
 
 test('recognizes IDs, display names, static constructors and module/category segments',()=>{
@@ -40,6 +40,17 @@ test('all matching Magik results remain available for the newer search category 
  const service=new Search(),restore=wrapSearch(service,()=>true);
  const results=service.searchNode('',[],{limit:64}).filter(n=>n.category==='Wanted');
  assert.equal(results.length,10);restore();
+});
+test('organization service detection and chunk scanning find the export across loaded assets',async()=>{
+ const org={organizeNodes(){},organizeNodesTab(){}};
+ assert.equal(isOrganizationService(org),true);assert.equal(isOrganizationService({organizeNodes(){}}),false);
+ assert.equal(isOrganizationService(null),false);assert.equal(isOrganizationService(()=>{}),false);
+ const modules={'/assets/a.js':{x:1},'/assets/b.js':{service:org},'/assets/c.js':{y:2}};
+ const found=await findExport(Object.keys(modules),async url=>modules[url],isOrganizationService);
+ assert.equal(found,org);
+ const withFailure=await findExport(Object.keys(modules),async url=>{if(url.endsWith('a.js'))throw Error('not a module');return modules[url]},isOrganizationService);
+ assert.equal(withFailure,org);
+ assert.equal(await findExport(['/assets/x.js'],async()=>({}),isOrganizationService),undefined);
 });
 test('registry proxy preserves nonconfigurable keys, constructors and later registrations',()=>{
  const registry={Other:a,MagikOne:m};Object.defineProperty(registry,'Fixed',{value:n,enumerable:true,configurable:false});

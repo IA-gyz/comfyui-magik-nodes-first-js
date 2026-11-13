@@ -137,3 +137,18 @@ export function getOrCreateStore(pinia, exports, id) {
   const useStore = Object.values(exports).find(value => typeof value === 'function' && value.$id === id);
   return useStore?.(pinia);
 }
+
+export function isOrganizationService(value) {
+  return Boolean(value) && typeof value.organizeNodes === 'function' && typeof value.organizeNodesTab === 'function';
+}
+
+/** Scan already-loaded frontend chunks for an exported service. Cached imports are cheap; failed loads are skipped. */
+export async function findExport(urls, load, predicate) {
+  for (const url of urls) {
+    let module;
+    try { module = await load(url); } catch { continue; }
+    const found = Object.values(module).find(predicate);
+    if (found) return found;
+  }
+  return undefined;
+}
