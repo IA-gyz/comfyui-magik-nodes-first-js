@@ -35,6 +35,33 @@ function loadedModule(name) {
   const pattern = new RegExp(`/${name}-[A-Za-z0-9_-]+\\.js$`);
   return loadedUrls().find(url => pattern.test(url.pathname))?.href;
 }
+// The organization service may sit in a lazily loaded chunk that is not in the
+// resource list yet. Crawl dynamic-import references starting from the loaded
+// asset directory (bounded); freshly imported chunks appear as new resources.
+async function findOrganization(serviceUrl) {
+  const rootPath = new URL('.', serviceUrl).pathname;
+  const isAsset = url => url.origin === location.origin && url.pathname.endsWith('.js') && url.pathname.startsWith(rootPath);
+  const seen = new Set();
+  let queue = loadedUrls().filter(isAsset).map(url => url.href);
+  for (let round = 0; round < 3 && queue.length; round++) {
+    const found = await findExport(queue, url => import(url), isOrganizationService);
+    if (found) return found;
+    const next = [];
+    for (const url of queue) {
+      seen.add(url);
+      let text;
+      try { text = await (await fetch(url)).text(); } catch { continue; }
+      for (const match of text.matchAll(/import\(\s*["']([^"']+\.js)["']/g)) {
+        let href;
+        try { href = new URL(match[1], url).href; } catch { continue; }
+        if (!seen.has(href) && !next.includes(href) && isAsset(new URL(href))) next.push(href);
+      }
+    }
+    for (const url of loadedUrls()) if (isAsset(url) && !seen.has(url.href) && !next.includes(url.href)) next.push(url.href);
+    queue = next;
+  }
+  return undefined;
+}
 function namedExport(module, name) {
   const fn = Object.values(module).find(value => typeof value === 'function' && value.name === name);
   if (!fn) throw Error(`Missing bundled Vue export: ${name}`);
@@ -54,13 +81,9 @@ async function install(isCancelled = () => false) {
   // with the application's existing Pinia, rather than waiting for a search to open.
   const defs = getOrCreateStore(pinia, bundle, 'nodeDef');
   const frequency = getOrCreateStore(pinia, bundle, 'nodeFrequency');
-  // The organization service can live in its own chunk depending on the build:
-  // scan every loaded frontend asset module for it (imports are cached).
+  // The organization service can live in its own (possibly lazy) chunk.
   let organization = Object.values(bundle).find(isOrganizationService);
-  if (!organization) {
-    const assets = loadedUrls().filter(url => url.pathname.includes('/assets/') && url.pathname.endsWith('.js')).map(url => url.href);
-    organization = await findExport(assets, url => import(url), isOrganizationService);
-  }
+  if (!organization) organization = await findOrganization(serviceUrl);
   // Newer builds moved the topNodeDefs computed from nodeFrequency to nodeDef.
   const topStore = [frequency, defs].find(store => store && vue.isRef(Object.getOwnPropertyDescriptor(vue.toRaw(store), 'topNodeDefs')?.value));
   const graph = globalThis.LiteGraph;
@@ -76,7 +99,7 @@ async function install(isCancelled = () => false) {
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
   const restores = [];
-  const state = {version: '0.2.3', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
+  const state = {version: '0.2.4', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
     get active() { return state.active; },
