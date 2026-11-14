@@ -61,11 +61,13 @@ async function install(isCancelled = () => false) {
     const assets = loadedUrls().filter(url => url.pathname.includes('/assets/') && url.pathname.endsWith('.js')).map(url => url.href);
     organization = await findExport(assets, url => import(url), isOrganizationService);
   }
+  // Newer builds moved the topNodeDefs computed from nodeFrequency to nodeDef.
+  const topStore = [frequency, defs].find(store => store && vue.isRef(Object.getOwnPropertyDescriptor(vue.toRaw(store), 'topNodeDefs')?.value));
   const graph = globalThis.LiteGraph;
   const missing = [
     !element && 'Vue root element', !vueApp && 'mounted Vue app',
     !stores && 'Pinia store registry', !defs && 'nodeDef store',
-    !defs?.nodeSearchService && 'node search service', !frequency && 'nodeFrequency store',
+    !defs?.nodeSearchService && 'node search service', !topStore && 'topNodeDefs computed',
     !organization && 'exported node organization service', !graph?.ContextMenu && 'LiteGraph context menu'
   ].filter(Boolean);
   if (missing.length) throw unavailable(missing);
@@ -74,7 +76,7 @@ async function install(isCancelled = () => false) {
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
   const restores = [];
-  const state = {version: '0.2.2', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
+  const state = {version: '0.2.3', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
     get active() { return state.active; },
@@ -108,11 +110,12 @@ async function install(isCancelled = () => false) {
   };
   try {
     add('searchBeforeCutoff', wrapSearch(defs.nodeSearchService, () => enabled.value, nodes => orderNodes(nodes)));
-    add('emptySearch', replaceComputed(frequency, 'topNodeDefs', vue, original => {
+    add('emptySearch', replaceComputed(topStore, 'topNodeDefs', vue, original => {
       if (!enabled.value) return original;
       const visible = defs.visibleNodeDefs, allowed = new Set(visible.map(n => n.name));
-      const ranked = frequency.nodeNamesByFrequency.flatMap(name => {
-        const node = defs.getNodeDefByName(name); return node && allowed.has(name) ? [node] : [];
+      const ranked = (frequency?.nodeNamesByFrequency ?? []).flatMap(name => {
+        const node = typeof defs.getNodeDefByName === 'function' ? defs.getNodeDefByName(name) : visible.find(n => n.name === name);
+        return node && allowed.has(name) ? [node] : [];
       });
       const existing = new Set(ranked.map(n => n.name));
       return orderNodes([...ranked, ...visible.filter(n => isMagik(n) && !existing.has(n.name))]).slice(0, 64);
