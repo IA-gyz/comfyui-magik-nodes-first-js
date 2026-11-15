@@ -1,4 +1,4 @@
-# Magik Nodes First — 0.2.5
+# Magik Nodes First — 0.2.6
 
 A frontend-only ComfyUI extension that puts Magik nodes first and lets you choose their order. No frontend rebuild or Python dependencies are required.
 
@@ -6,7 +6,7 @@ A frontend-only ComfyUI extension that puts Magik nodes first and lets you choos
 
 Replace the existing folder with this one:
 
-`/home/toto/Apps/comfyui/custom_nodes/Magik_Nodes_First_JS/`
+`<your-comfyui>/custom_nodes/Magik_Nodes_First_JS/`
 
 `__init__.py` and `web/` must be directly inside that folder. Keep only one installed copy. Restart ComfyUI and hard-refresh the app/browser with Ctrl+Shift+R.
 
@@ -38,7 +38,7 @@ Menus, searches and wire suggestions were confirmed working by the user in 0.1.1
 
 This extension uses internal runtime hooks for the supplied production frontend 1.55.18 build. It currently recognizes `settingStore-*.js` and `vendor-vue-core-*.js` asset chunks by name pattern. The node organization service is located by scanning the loaded asset chunks and, if needed, following their dynamic-import references (bounded crawl), and the `topNodeDefs` computed is taken from whichever store exposes it (`nodeFrequency` or `nodeDef`), so builds that reshuffle or lazy-load chunks or move the computed are handled. If no loaded or lazily importable chunk exports the organization service (some builds inline it without re-exporting), the extension still installs after a short retry window and reports a warning in `magikNodesFirst.status().warnings`; search results, context menus, wire suggestions and empty-search keep the custom order, while search category navigation keeps native order. A different frontend build may still need a bridge update. It does not replace or freeze your installed frontend. Third-party node pickers that bypass native services may need separate integration.
 
-Startup is deferred until after ComfyUI's setup hook returns. Lazy stores are created through their native accessors in the existing application Pinia. Missing prerequisites are retried for roughly 20 seconds; failures include their names.
+Startup is deferred until after ComfyUI's setup hook returns. Lazy stores are created through their native accessors in the existing application Pinia. Missing prerequisites are retried for roughly 20 seconds (100 attempts x 200 ms); failures include their names. The node organization service is probed separately for about the first 10 seconds; if it is still not found, the extension installs without that hook and reports it in `status().warnings` (it is not re-checked afterwards — refresh to retry).
 
 ## Diagnostics and removal
 
@@ -60,7 +60,7 @@ Once installed, `customOrder` in the status output contains the saved backend ID
 
 Automated checks cover explicit ranking, normalization, new/missing nodes, duplicate display names, nested category ordering, menu separators, search cutoffs, compatibility membership, saving/cancelling/resetting the editor, save failure, drag event handling, startup and restoration. The editor tests use a minimal DOM fixture: they verify its actions and state, not visual appearance or native browser drag behavior. Integration tests use the supplied production Vue/Pinia runtime and mock browser/service objects. The updated dialog still needs a live browser check.
 
-To run the dependency-free tests with Node.js 24+:
+To run the dependency-free tests with Node.js 22.15+:
 
 ```bash
 node --test tests/*.test.mjs

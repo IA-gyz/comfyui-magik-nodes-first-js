@@ -1,9 +1,9 @@
 [project]
 name = "comfyui-magik-nodes-first-js"
-version = "1.0.0"
+version = "0.2.6"
 description = 'Magik Nodes First Js'
 authors = [{name = "IA-gyz"}]
-license = {text = "MIT"}
+license = {text = "GPL-3.0-only"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []

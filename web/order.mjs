@@ -38,7 +38,12 @@ export function editorIds(nodes, saved) {
 }
 
 /** Build descendant category scores once per menu, rather than rescanning for each row. */
+const menuRankCache = new WeakMap();
 export function menuRank(registry, order, filter) {
+  // Cache per registry; recompute when the registry grows or the order/filter changes.
+  const size = Object.keys(registry).length;
+  const cached = menuRankCache.get(registry);
+  if (cached && cached.size === size && cached.order === order && cached.filter === filter) return cached.score;
   const score = nodeRank(order), categories = new Map();
   for (const node of Object.values(registry)) {
     const rank = score(node);
@@ -48,10 +53,12 @@ export function menuRank(registry, order, filter) {
       path += segment + '/'; categories.set(path, Math.min(categories.get(path) ?? Infinity, rank));
     }
   }
-  return entry => {
+  const entryScore = entry => {
     const key = typeof entry === 'string' ? entry : entry?.value;
     if (typeof key !== 'string') return Infinity;
     if (Object.hasOwn(registry, key)) return score(registry[key]);
     return entry?.has_submenu && key.endsWith('/') ? categories.get(key) ?? Infinity : Infinity;
   };
+  menuRankCache.set(registry, {size, order, filter, score: entryScore});
+  return entryScore;
 }

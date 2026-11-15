@@ -35,29 +35,44 @@ function loadedModule(name) {
   const pattern = new RegExp(`/${name}-[A-Za-z0-9_-]+\\.js$`);
   return loadedUrls().find(url => pattern.test(url.pathname))?.href;
 }
+// The resource-timing buffer is capped (~250 entries) and can drop chunk URLs;
+// fall back to the asset references in the entry HTML.
+async function htmlJsUrls() {
+  try {
+    const text = await (await fetch(location.href)).text();
+    return [...text.matchAll(/(?:src|href)\s*=\s*["']([^"']+\.js)["']/g)].map(m => new URL(m[1], document.baseURI).href);
+  } catch { return []; }
+}
 // The organization service may sit in a lazily loaded chunk that is not in the
 // resource list yet. Crawl dynamic-import references starting from the loaded
 // asset directory (bounded); freshly imported chunks appear as new resources.
+// Results and fetched sources are cached across install retries so each attempt
+// only scans newly loaded URLs.
+const orgProbe = {found: undefined, checked: new Set(), fetched: new Map()};
 async function findOrganization(serviceUrl) {
+  if (orgProbe.found) return orgProbe.found;
   const rootPath = new URL('.', serviceUrl).pathname;
   const isAsset = url => url.origin === location.origin && url.pathname.endsWith('.js') && url.pathname.startsWith(rootPath);
-  const seen = new Set();
-  let queue = loadedUrls().filter(isAsset).map(url => url.href);
+  let queue = loadedUrls().filter(isAsset).map(url => url.href).filter(href => !orgProbe.checked.has(href));
   for (let round = 0; round < 3 && queue.length; round++) {
     const found = await findExport(queue, url => import(url), isOrganizationService);
-    if (found) return found;
+    if (found) { orgProbe.found = found; return found; }
     const next = [];
     for (const url of queue) {
-      seen.add(url);
-      let text;
-      try { text = await (await fetch(url)).text(); } catch { continue; }
+      orgProbe.checked.add(url);
+      let text = orgProbe.fetched.get(url);
+      if (text === undefined) {
+        try { text = await (await fetch(url)).text(); } catch { text = null; }
+        orgProbe.fetched.set(url, text);
+      }
+      if (!text) continue;
       for (const match of text.matchAll(/import\(\s*["']([^"']+\.js)["']/g)) {
         let href;
         try { href = new URL(match[1], url).href; } catch { continue; }
-        if (!seen.has(href) && !next.includes(href) && isAsset(new URL(href))) next.push(href);
+        if (!orgProbe.checked.has(href) && !next.includes(href) && isAsset(new URL(href))) next.push(href);
       }
     }
-    for (const url of loadedUrls()) if (isAsset(url) && !seen.has(url.href) && !next.includes(url.href)) next.push(url.href);
+    for (const url of loadedUrls()) if (isAsset(url) && !orgProbe.checked.has(url.href) && !next.includes(url.href)) next.push(url.href);
     queue = next;
   }
   return undefined;
@@ -69,10 +84,16 @@ function namedExport(module, name) {
 }
 async function install(isCancelled = () => false, {attempt = 1} = {}) {
   if (globalThis.magikNodesFirst?.active) throw Error('Magik Nodes First is already installed');
-  const serviceUrl = loadedModule(REVIEWED.service), vueUrl = loadedModule(REVIEWED.vue);
+  let serviceUrl = loadedModule(REVIEWED.service), vueUrl = loadedModule(REVIEWED.vue);
+  if (!serviceUrl || !vueUrl) {
+    const pattern = name => new RegExp(`/${name}-[A-Za-z0-9_-]+\\.js$`);
+    const extra = (await htmlJsUrls()).map(href => new URL(href)).filter(url => url.origin === location.origin);
+    serviceUrl ??= extra.find(url => pattern(REVIEWED.service).test(url.pathname))?.href;
+    vueUrl ??= extra.find(url => pattern(REVIEWED.vue).test(url.pathname))?.href;
+  }
   if (!serviceUrl || !vueUrl) throw unavailable([!serviceUrl && 'reviewed service module', !vueUrl && 'reviewed Vue module'].filter(Boolean));
   const [bundle, runtime] = await Promise.all([import(serviceUrl), import(vueUrl)]);
-  const vue = Object.fromEntries(['computed', 'ref', 'shallowRef', 'toRaw', 'isRef', 'getCurrentInstance', 'onScopeDispose', 'getActivePinia'].map(name => [name, namedExport(runtime, name)]));
+  const vue = Object.fromEntries(['computed', 'ref', 'toRaw', 'isRef', 'getActivePinia'].map(name => [name, namedExport(runtime, name)]));
   const element = document.getElementById('vue-app');
   const vueApp = element?.__vue_app__;
   const pinia = vueApp?.config.globalProperties.$pinia ?? vue.getActivePinia();
@@ -102,7 +123,7 @@ async function install(isCancelled = () => false, {attempt = 1} = {}) {
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
   const restores = [];
-  const state = {version: '0.2.5', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value,
+  const state = {version: '0.2.6', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value,
     warnings: organization ? [] : ['exported node organization service not found; search category navigation keeps native order']};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
@@ -190,7 +211,7 @@ async function install(isCancelled = () => false, {attempt = 1} = {}) {
   }
 }
 app.registerExtension({
-  name: 'Magik.NodesFirst.JSPrototype',
+  name: 'Magik.NodesFirst',
   settings: [{id: SETTING, name: 'Prioritize Magik nodes', category: ['Magik', 'Nodes', 'Priority'], type: 'boolean', defaultValue: true,
     onChange(value) { control?.setEnabled(value); }},
     {id: ORDER_SETTING, name: 'Magik node display order', type: 'hidden', defaultValue: [], onChange(value) { control?.setOrder(value); }}],

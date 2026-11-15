@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeOrder,nodeId,nodeRank,rankItems,rankNodes,rankTree,moveId,editorIds} from '../web/order.mjs';
+import {normalizeOrder,nodeId,nodeRank,rankItems,rankNodes,rankTree,moveId,editorIds,menuRank} from '../web/order.mjs';
 import {orderMenu,wrapSearch} from '../web/priority.mjs';
 const a={name:'Other'},m={name:'MagikA'},n={name:'MagikB'},fresh={name:'MagikNew'};
 test('normalizes saved data, preserves IDs and removes duplicates',()=>{
@@ -41,4 +41,13 @@ test('menu categories use the highest ranked eligible descendant and exclude hid
  assert.equal(rank({value:'Tools/',has_submenu:true}),2);assert.equal(rank({value:'Tools/B/',has_submenu:true}),2);
  assert.equal(rank({value:'Other/',has_submenu:true}),Infinity);assert.equal(rank({value:'Filtered/',has_submenu:true}),Infinity);
  assert.equal(rank('MagikB'),2);assert.equal(rank({value:'Tools/B/'}),Infinity);
+});
+test('menuRank caches scores per registry and recomputes when the registry or order changes',()=>{
+ const registry={MagikA:{name:'MagikA',category:'Tools/A'},Other:{name:'Other',category:'Other'}};
+ const order=['MagikA'];
+ const a=menuRank(registry,order,undefined),b=menuRank(registry,order,undefined);
+ assert.equal(a,b);assert.equal(a('MagikA'),0);assert.equal(a('Other'),Infinity);
+ const c=menuRank(registry,[],undefined);assert.notEqual(a,c);assert.equal(c('MagikA'),0);
+ registry.MagikB={name:'MagikB',category:'Tools/B'};
+ const d=menuRank(registry,order,undefined);assert.notEqual(a,d);assert.equal(d({value:'Tools/',has_submenu:true}),0);
 });
