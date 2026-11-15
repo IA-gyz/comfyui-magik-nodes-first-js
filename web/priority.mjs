@@ -103,7 +103,7 @@ export function deferInstallation({install, onSuccess, onStatus = () => {}, dela
     if (cancelled || running) return;
     running = true; state.attempts++; state.phase = 'checking'; publish();
     try {
-      const api = await install(() => cancelled);
+      const api = await install(() => cancelled, {attempt: state.attempts});
       if (cancelled) { api?.restore?.(); return; }
       state.phase = 'installed'; state.missing = []; state.lastError = null;
       onSuccess(api); publish();
@@ -139,7 +139,8 @@ export function getOrCreateStore(pinia, exports, id) {
 }
 
 export function isOrganizationService(value) {
-  return Boolean(value) && typeof value.organizeNodes === 'function' && typeof value.organizeNodesTab === 'function';
+  return Boolean(value) && typeof value.organizeNodes === 'function' &&
+    ['organizeNodesTab', 'getGroupingStrategy', 'getSortingStrategy'].some(key => typeof value[key] === 'function');
 }
 
 /** Scan already-loaded frontend chunks for an exported service. Cached imports are cheap; failed loads are skipped. */

@@ -43,7 +43,8 @@ test('all matching Magik results remain available for the newer search category 
 });
 test('organization service detection and chunk scanning find the export across loaded assets',async()=>{
  const org={organizeNodes(){},organizeNodesTab(){}};
- assert.equal(isOrganizationService(org),true);assert.equal(isOrganizationService({organizeNodes(){}}),false);
+ assert.equal(isOrganizationService(org),true);assert.equal(isOrganizationService({organizeNodes(){},getGroupingStrategy(){}}),true);
+ assert.equal(isOrganizationService({organizeNodes(){}}),false);
  assert.equal(isOrganizationService(null),false);assert.equal(isOrganizationService(()=>{}),false);
  const modules={'/assets/a.js':{x:1},'/assets/b.js':{service:org},'/assets/c.js':{y:2}};
  const found=await findExport(Object.keys(modules),async url=>modules[url],isOrganizationService);

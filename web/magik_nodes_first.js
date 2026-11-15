@@ -67,7 +67,7 @@ function namedExport(module, name) {
   if (!fn) throw Error(`Missing bundled Vue export: ${name}`);
   return fn;
 }
-async function install(isCancelled = () => false) {
+async function install(isCancelled = () => false, {attempt = 1} = {}) {
   if (globalThis.magikNodesFirst?.active) throw Error('Magik Nodes First is already installed');
   const serviceUrl = loadedModule(REVIEWED.service), vueUrl = loadedModule(REVIEWED.vue);
   if (!serviceUrl || !vueUrl) throw unavailable([!serviceUrl && 'reviewed service module', !vueUrl && 'reviewed Vue module'].filter(Boolean));
@@ -91,15 +91,19 @@ async function install(isCancelled = () => false) {
     !element && 'Vue root element', !vueApp && 'mounted Vue app',
     !stores && 'Pinia store registry', !defs && 'nodeDef store',
     !defs?.nodeSearchService && 'node search service', !topStore && 'topNodeDefs computed',
-    !organization && 'exported node organization service', !graph?.ContextMenu && 'LiteGraph context menu'
+    !graph?.ContextMenu && 'LiteGraph context menu'
   ].filter(Boolean);
   if (missing.length) throw unavailable(missing);
+  // The organization service is best-effort: retry while it may still lazy-load,
+  // then install without it instead of failing entirely.
+  if (!organization && attempt < 50) throw unavailable(['exported node organization service']);
   if (isCancelled()) throw Error('Installation cancelled before installing hooks');
   const enabled = vue.ref(app.extensionManager.setting.get(SETTING) !== false);
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
   const restores = [];
-  const state = {version: '0.2.4', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value};
+  const state = {version: '0.2.5', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value,
+    warnings: organization ? [] : ['exported node organization service not found; search category navigation keeps native order']};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
     get active() { return state.active; },
@@ -143,9 +147,10 @@ async function install(isCancelled = () => false) {
       const existing = new Set(ranked.map(n => n.name));
       return orderNodes([...ranked, ...visible.filter(n => isMagik(n) && !existing.has(n.name))]).slice(0, 64);
     }));
-    add('categoryAndClassicSidebar', wrapMethod(organization, 'organizeNodes', original => function(...args) {
+    if (organization) add('categoryAndClassicSidebar', wrapMethod(organization, 'organizeNodes', original => function(...args) {
       const tree = original.apply(this, args); return enabled.value ? rankTree(tree, nodeRank(customOrder.value)) : tree;
     }));
+    else console.warn('[Magik Nodes First] Node organization service not found; search category navigation keeps native order. Search, menus and suggestions still reorder.');
     // Native legacy search enumerates the registry in all its filtering passes.
     // A proxy changes enumeration order, preserving every key and constructor.
     const originalRegistry = graph.registered_node_types;
