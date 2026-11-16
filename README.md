@@ -1,4 +1,4 @@
-# Magik Nodes First — 0.2.6
+# Magik Nodes First — 0.2.7
 
 A frontend-only ComfyUI extension that puts Magik nodes first and lets you choose their order. No frontend rebuild or Python dependencies are required.
 
@@ -27,6 +27,8 @@ Your ordering applies to matching Magik nodes in:
 - Typed search and empty-search suggestions.
 - Legacy search, where it uses native registry enumeration.
 - Native wire-release suggested nodes.
+
+Wire-release suggestions are additionally sorted by socket fit: when you release a dragged wire (or add an input/output type filter in search), proposed nodes with an exact matching socket type come first, then wildcard (`*`) matches, then the remaining results. Your Magik order still applies within each group. This covers both the search box opened on wire release and the Add Node menu of the wire-release context menu. For example, extending a VAE input lists nodes with a VAE output first.
 
 Native category nesting and menu separators are preserved. A category is positioned according to its earliest ranked eligible Magik descendant; nodes stay inside their existing categories. Other nodes retain their native relative order after Magik nodes. Socket compatibility and search matching are unchanged.
 
@@ -58,7 +60,7 @@ Once installed, `customOrder` in the status output contains the saved backend ID
 
 ## Verification
 
-Automated checks cover explicit ranking, normalization, new/missing nodes, duplicate display names, nested category ordering, menu separators, search cutoffs, compatibility membership, saving/cancelling/resetting the editor, save failure, drag event handling, startup and restoration. The editor tests use a minimal DOM fixture: they verify its actions and state, not visual appearance or native browser drag behavior. Integration tests use the supplied production Vue/Pinia runtime and mock browser/service objects. The updated dialog still needs a live browser check.
+Automated checks cover explicit ranking, normalization, new/missing nodes, duplicate display names, nested category ordering, menu separators, search cutoffs, socket-fit ranking for wire-release suggestions, compatibility membership, saving/cancelling/resetting the editor, save failure, drag event handling, startup and restoration. The editor tests use a minimal DOM fixture: they verify its actions and state, not visual appearance or native browser drag behavior. Integration tests use the supplied production Vue/Pinia runtime and mock browser/service objects. The updated dialog still needs a live browser check.
 
 To run the dependency-free tests with Node.js 22.15+:
 

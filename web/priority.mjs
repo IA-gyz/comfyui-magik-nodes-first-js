@@ -50,17 +50,18 @@ export function wrapMethod(target, key, make) {
     return true;
   };
 }
-export function wrapSearch(service, enabled, order = nodes => partition(nodes, isMagik)) {
+export function wrapSearch(service, enabled, order = nodes => partition(nodes, isMagik), preferred = isMagik) {
   return wrapMethod(Object.hasOwn(service, 'searchNode') ? service : Object.getPrototypeOf(service), 'searchNode', original => function(query, filters, options, extraOptions) {
     if (!enabled()) return original.apply(this, arguments);
+    const context = {query, filters, options, extraOptions};
     const results = original.call(this, query, filters, {...options, limit: 0}, extraOptions);
     if (!Array.isArray(results)) throw Error('Unexpected native search return value');
-    const ordered = order(results);
+    const ordered = order(results, context);
     if (!options?.limit) return ordered;
-    // Keep all matching Magik results available to V2's subsequent category/source filters.
-    const magikCount = ordered.findIndex(n => !isMagik(n));
-    const preferredCount = magikCount < 0 ? ordered.length : magikCount;
-    return ordered.slice(0, Math.max(options.limit, preferredCount));
+    // Keep all preferred results available to V2's subsequent category/source filters.
+    let preferredEnd = 0;
+    for (let index = 0; index < ordered.length; index++) if (preferred(ordered[index], context)) preferredEnd = index + 1;
+    return ordered.slice(0, Math.max(options.limit, preferredEnd));
   });
 }
 export function replaceComputed(store, key, vue, transform) {

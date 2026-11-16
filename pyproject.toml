@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-magik-nodes-first-js"
-version = "0.2.6"
+version = "0.2.7"
 description = 'Magik Nodes First Js'
 authors = [{name = "IA-gyz"}]
 license = {text = "GPL-3.0-only"}
