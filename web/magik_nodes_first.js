@@ -1,7 +1,7 @@
 import { app } from '../../scripts/app.js';
 import { isMagik, orderMenu, wrapMethod, wrapSearch, replaceComputed, deferInstallation, getOrCreateStore, isOrganizationService, findExport } from './priority.mjs';
 
-import {normalizeOrder, nodeRank, rankItems, rankNodes, rankTree, menuRank} from './order.mjs';
+import {normalizeOrder, nodeId, nodeRank, rankItems, rankItemsBy, rankNodes, rankNodesFit, rankTree, menuRank, menuFit, socketFilter, linkFilter, fitRank} from './order.mjs';
 import {openOrderEditor} from './order_editor.mjs';
 
 const ORDER_SETTING = 'Magik.NodesFirst.Order';
@@ -122,8 +122,13 @@ async function install(isCancelled = () => false, {attempt = 1} = {}) {
   const enabled = vue.ref(app.extensionManager.setting.get(SETTING) !== false);
   const customOrder = vue.ref(normalizeOrder(app.extensionManager.setting.get(ORDER_SETTING)));
   const orderNodes = (nodes, resolve) => rankNodes(nodes, customOrder.value, resolve);
+  // Wire-release searches carry an input/output type filter: exact socket matches
+  // first, wildcard matches next, saved Magik order within each tier.
+  const searchFit = context => fitRank(socketFilter(context?.filters));
+  const orderSearch = (nodes, context) => rankNodesFit(nodes, customOrder.value, searchFit(context));
+  const preferSearch = (node, context) => isMagik(node) || searchFit(context)(node) === 0;
   const restores = [];
-  const state = {version: '0.2.6', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value,
+  const state = {version: '0.2.7', phase: 'installed', active: true, enabled: enabled.value, build: REVIEWED.service, hooks: {}, customOrder: customOrder.value,
     warnings: organization ? [] : ['exported node organization service not found; search category navigation keeps native order']};
   function add(name, restore) { restores.push(restore); state.hooks[name] = true; }
   const api = {
@@ -157,7 +162,7 @@ async function install(isCancelled = () => false, {attempt = 1} = {}) {
     }
   };
   try {
-    add('searchBeforeCutoff', wrapSearch(defs.nodeSearchService, () => enabled.value, nodes => orderNodes(nodes)));
+    add('searchBeforeCutoff', wrapSearch(defs.nodeSearchService, () => enabled.value, orderSearch, preferSearch));
     add('emptySearch', replaceComputed(topStore, 'topNodeDefs', vue, original => {
       if (!enabled.value) return original;
       const visible = defs.visibleNodeDefs, allowed = new Set(visible.map(n => n.name));
@@ -192,8 +197,19 @@ async function install(isCancelled = () => false, {attempt = 1} = {}) {
         let next = args;
         if (enabled.value && Array.isArray(args[0])) {
           const canvas = app.canvasOrUndefined;
-          const score = menuRank(graph.registered_node_types, customOrder.value, canvas?.filter || canvas?.graph?.filter);
-          next = [orderMenu(args[0], () => false, run => rankItems(run, score)), ...args.slice(1)];
+          const filter = canvas?.filter || canvas?.graph?.filter;
+          const score = menuRank(graph.registered_node_types, customOrder.value, filter);
+          // Menus opened from a released wire rank socket-fitting nodes first.
+          const link = linkFilter(canvas?.linkConnector?.renderLinks?.[0]);
+          let rankRun = run => rankItems(run, score);
+          if (link) {
+            const fit = fitRank(link);
+            const allDefs = Array.isArray(defs.nodeDefs) ? defs.nodeDefs : defs.visibleNodeDefs;
+            const defById = new Map(allDefs.map(node => [nodeId(node), node]));
+            const entryFit = menuFit(graph.registered_node_types, filter, `${link.side}:${link.values.join(',')}`, node => fit(defById.get(nodeId(node)) ?? node));
+            rankRun = run => rankItemsBy(run, entry => [entryFit(entry), score(entry)]);
+          }
+          next = [orderMenu(args[0], () => false, rankRun), ...args.slice(1)];
         }
         return Reflect.construct(target, next, newTarget);
       }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {isMagik,partition,orderTree,orderMenu,wrapMethod,wrapSearch,isOrganizationService,findExport} from '../web/priority.mjs';
+import {rankNodesFit,socketFilter,fitRank} from '../web/order.mjs';
 const a={name:'A'},m={name:'MagikOne'},n={name:'MagikTwo'};
 
 test('recognizes IDs, display names, static constructors and module/category segments',()=>{
@@ -40,6 +41,27 @@ test('all matching Magik results remain available for the newer search category 
  const service=new Search(),restore=wrapSearch(service,()=>true);
  const results=service.searchNode('',[],{limit:64}).filter(n=>n.category==='Wanted');
  assert.equal(results.length,10);restore();
+});
+test('wire-release type filters rank exact socket fits first and keep them past the limit',()=>{
+ class Search{searchNode(query,filters,options){return this.nodes}}
+ const service=new Search();service.nodes=[
+  {name:'MagikStar',outputTypes:['*']},
+  {name:'OtherVae',outputTypes:['VAE']},
+  {name:'MagikVae',outputTypes:['VAE','IMAGE']},
+  {name:'OtherNone',outputTypes:['IMAGE']}
+ ];
+ let order=['MagikStar','MagikVae'];
+ const filters=[{filterDef:{id:'output'},value:'VAE'}];
+ const fitOf=context=>fitRank(socketFilter(context?.filters));
+ const restore=wrapSearch(service,()=>true,
+  (nodes,context)=>rankNodesFit(nodes,order,fitOf(context)),
+  (node,context)=>isMagik(node)||fitOf(context)(node)===0);
+ const result=service.searchNode('',filters,{limit:2});
+ assert.deepEqual(result.map(n=>n.name),['MagikVae','OtherVae','MagikStar']);
+ assert.equal(service.searchNode('',[],{limit:2}).length,2);
+ order=['MagikVae','MagikStar'];
+ assert.deepEqual(service.searchNode('',filters,{limit:2}).map(n=>n.name),['MagikVae','OtherVae','MagikStar']);
+ restore();
 });
 test('organization service detection and chunk scanning find the export across loaded assets',async()=>{
  const org={organizeNodes(){},organizeNodesTab(){}};
